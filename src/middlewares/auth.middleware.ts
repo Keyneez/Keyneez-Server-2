@@ -1,0 +1,35 @@
+import { NestMiddleware } from "@nestjs/common";
+import { NextFunction, Request, Response } from "express";
+import { JwtPayload } from "jsonwebtoken";
+import { jwtHandler } from "src/modules/jwtHandler";
+import { rm, sc } from "../constants";
+import { fail } from "../constants/response";
+import tokenType from "../constants/tokenType";
+
+export class AuthMiddleware implements NestMiddleware{
+  use(req: Request, res: Response, next: NextFunction) {
+    const token = req.headers.authorization?.split(" ").reverse()[0]; //? Bearer ~~ 에서 토큰만 파싱
+    if (!token) return res.status(sc.UNAUTHORIZED).send(fail(sc.UNAUTHORIZED, rm.EMPTY_TOKEN));
+  
+    try {
+      const decoded = jwtHandler.verify(token); //? jwtHandler에서 만들어둔 verify로 토큰 검사
+  
+      //? 토큰 에러 분기 처리
+      if (decoded === tokenType.TOKEN_EXPIRED)
+        return res.status(sc.UNAUTHORIZED).send(fail(sc.UNAUTHORIZED, rm.EXPIRED_TOKEN));
+      if (decoded === tokenType.TOKEN_INVALID)
+        return res.status(sc.UNAUTHORIZED).send(fail(sc.UNAUTHORIZED, rm.INVALID_TOKEN));
+  
+      //? decode한 후 담겨있는 user_key를 꺼내옴
+      const user_key: number = (decoded as JwtPayload).user_key;
+      if (!user_key) return res.status(sc.UNAUTHORIZED).send(fail(sc.UNAUTHORIZED, rm.INVALID_TOKEN));
+  
+      //? 얻어낸 user_key 를 Request Body 내 user_key 필드에 담고, 다음 미들웨어로 넘김( next() )
+      req.body.user_key = user_key;
+      next();
+    } catch (error) {
+      console.log(error);
+      res.status(sc.INTERNAL_SERVER_ERROR).send(fail(sc.INTERNAL_SERVER_ERROR, rm.INTERNAL_SERVER_ERROR));
+    }
+  };
+} 
